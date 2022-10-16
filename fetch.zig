@@ -302,7 +302,7 @@ const RecursiveFetch = struct {
     }
 };
 
-const GitFetch = struct {
+pub const GitFetch = struct {
     builder: *std.build.Builder,
     step: std.build.Step,
     dep: GitDependency,
