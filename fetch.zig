@@ -26,6 +26,7 @@ pub const GitDependency = struct {
     url: []const u8,
     commit: []const u8,
     recursive: bool = false,
+    shallow_branch: ?[]const u8 = null,
 };
 
 pub const Dependency = struct {
@@ -327,10 +328,23 @@ pub const GitFetch = struct {
         const git_fetch = @fieldParentPtr(GitFetch, "step", step);
         const builder = git_fetch.builder;
 
+        // TODO: the logging behavior here suppresses important Git progress reports, like:
+        //
+        // remote: Enumerating objects: 34369, done.
+        // remote: Counting objects: 100% (34369/34369), done.
+        // remote: Compressing objects: 100% (14619/14619), done.
+        // remote: Total 34369 (delta 20763), reused 30144 (delta 19405), pack-reused 0
+        // Receiving objects: 100% (34369/34369), 56.13 MiB | 21.65 MiB/s, done.
+        // Resolving deltas: 100% (20763/20763), done.
+        //
         std.log.info("fetching from git into {s}...", .{git_fetch.dir});
 
         std.fs.accessAbsolute(git_fetch.dir, .{}) catch {
-            const clone_args = &.{ "git", "clone", git_fetch.dep.url, git_fetch.dir };
+            const clone_args: []const []const u8 = if (git_fetch.dep.shallow_branch) |branch|
+                &.{ "git", "clone", "--depth", "1", "-b", branch, git_fetch.dep.url, git_fetch.dir }
+            else
+                &.{ "git", "clone", git_fetch.dep.url, git_fetch.dir };
+
             try runChildProcess(builder, builder.build_root, clone_args, builder.verbose);
         };
 
@@ -339,6 +353,10 @@ pub const GitFetch = struct {
             try runChildProcess(builder, git_fetch.dir, submodule_args, builder.verbose);
         }
 
+        // TODO: zig-fetch does not currently correctly handle updating the git repo if it already
+        // exists and the revision has changed. It should run something akin to `git fetch` (adding
+        // `--depth 1` if a shallow clone) followed by `git checkout`. This is a network access,
+        // though, so should be ran rarely.
         const checkout_args = &.{ "git", "checkout", git_fetch.dep.commit };
         try runChildProcess(builder, git_fetch.dir, checkout_args, builder.verbose);
     }
